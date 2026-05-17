@@ -1,0 +1,9 @@
+{
+  "resource_pack_name": "awaydetector",
+  "texture_name": "atlas.terrain",
+  "texture_data": {
+    "awaydetector_block": {
+      "textures": "textures/blocks/awaydetector_block"
+    }
+  }
+}
