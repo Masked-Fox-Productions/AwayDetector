@@ -1,4 +1,2 @@
-## SETUP: Replace "awaydetector" with your mod's namespace and add your entries
-
-tile.awaydetector:example_block.name=Example Block
-item.awaydetector:example_block.name=Example Block
+tile.awaydetector:awaydetector_block.name=Away Detector
+item.awaydetector:awaydetector_block.name=Away Detector

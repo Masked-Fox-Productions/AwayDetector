@@ -2,7 +2,7 @@
   "format_version": 2,
   "header": {
     "name": "AwayDetector",
-    "description": "Replace with your mod description",
+    "description": "Detects chunk unload duration and reports via script events and redstone",
     "uuid": "f3d5d17f-f81a-4a46-97f6-78c23704c872",
     "version": [0, 1, 0],
     "min_engine_version": [1, 20, 0]
@@ -24,7 +24,7 @@
   "dependencies": [
     {
       "module_name": "@minecraft/server",
-      "version": "1.12.0"
+      "version": "2.3.0"
     }
   ]
 }
