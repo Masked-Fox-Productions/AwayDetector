@@ -1,0 +1,30 @@
+{
+  "format_version": 2,
+  "header": {
+    "name": "AwayDetector",
+    "description": "Replace with your mod description",
+    "uuid": "f3d5d17f-f81a-4a46-97f6-78c23704c872",
+    "version": [0, 1, 0],
+    "min_engine_version": [1, 20, 0]
+  },
+  "modules": [
+    {
+      "type": "data",
+      "uuid": "46993659-5c07-4948-a0ec-aef2e6bf6d90",
+      "version": [0, 1, 0]
+    },
+    {
+      "type": "script",
+      "uuid": "ae7bb049-51c0-4ef0-a18f-a7f39663a72f",
+      "version": [0, 1, 0],
+      "entry": "scripts/main.js",
+      "language": "javascript"
+    }
+  ],
+  "dependencies": [
+    {
+      "module_name": "@minecraft/server",
+      "version": "1.12.0"
+    }
+  ]
+}

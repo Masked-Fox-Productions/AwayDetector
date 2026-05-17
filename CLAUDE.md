@@ -4,67 +4,59 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Minecraft mod targeting both Bedrock Edition (Script API + JSON definitions) and Java Edition (Fabric). The repo ships:
+AwayDetector is a Minecraft Bedrock add-on (with future Java/Fabric parity) that detects how long a chunk was unloaded and reports the duration via script events and redstone output. It ships a standalone custom block and a copyable block custom component that other mods can integrate.
 
-- `mymod_bp/` — behavior pack: block JSONs, recipes, entities, and the script bundle entered at `scripts/main.js`.
-- `mymod_rp/` — resource pack: lang strings and textures.
-- `java-mymod/` — Fabric mod: Gradle-based Java project with the same game logic.
+- `awaydetector_bp/` — behavior pack: block JSON, recipe, and the script bundle entered at `scripts/main.js`.
+- `awaydetector_rp/` — resource pack: lang strings and textures.
+- `java-awaydetector/` — Fabric mod: Gradle-based Java project (Bedrock-first, Java port follows).
 
-The Bedrock Script API target is `@minecraft/server` 1.12.0 against `min_engine_version` 1.20.0. Scripts are ESM (`"type": "module"` at the repo root).
+The Bedrock Script API target is `@minecraft/server` 2.3.0 against `min_engine_version` 1.20.0. Scripts are ESM (`"type": "module"` at the repo root).
 
 ## Commands
 
 ```bash
 # Bedrock tests
 npm test                                                              # run all unit tests
-node --import ./tests/register-hooks.mjs --test tests/Example.test.mjs     # single file
-node --import ./tests/register-hooks.mjs --test --test-name-pattern "pattern" tests/*.test.mjs  # filter by name
+node --import ./tests/register-hooks.mjs --test tests/*.test.mjs      # all test files
+node --import ./tests/register-hooks.mjs --test --test-name-pattern "computeGap" tests/*.test.mjs  # filter by name
 
 # Java tests
-cd java-mymod && ./gradlew test                                       # run all Java tests
-cd java-mymod && ./gradlew build                                      # build mod JAR
-cd java-mymod && ./gradlew deployToMods                               # build and deploy to .minecraft/mods
+cd java-awaydetector && ./gradlew test                                # run all Java tests
+cd java-awaydetector && ./gradlew build                               # build mod JAR
+cd java-awaydetector && ./gradlew deployToMods                        # build and deploy to .minecraft/mods
 ```
 
-The `--import ./tests/register-hooks.mjs` flag is required for Bedrock tests: it installs a Node loader hook that redirects `@minecraft/server` to `tests/stubs/minecraft-server.mjs`. Without it, importing any production module fails because the Bedrock module doesn't exist in Node.
+The `--import ./tests/register-hooks.mjs` flag is required for Bedrock tests: it installs a Node loader hook that redirects `@minecraft/server` to `tests/stubs/minecraft-server.mjs`.
 
-There is no build step, no linter, and no package install for the Bedrock side — it has zero runtime dependencies. To install the add-on in Bedrock, zip the two pack directories as `*.mcpack`.
+There is no build step, no linter, and no package install for the Bedrock side — zero runtime dependencies.
 
 ## Architecture
 
-The codebase is split into three layers. Keep new code on the correct side of these seams.
+AwayDetector uses **block custom components** — a different pattern from manager/subsystem architectures.
 
-**Domain layer (`scripts/domain/`)** — pure JavaScript, no `@minecraft/server` imports allowed. Domain classes define game logic, data models, and JSON serialization without ever touching a Bedrock API. This is what makes the domain testable under `node:test` with only a noop stub.
+**Block custom component (`scripts/components/DetectorComponent.js`)** — registers `awaydetector:detector` via the startup event. Provides `onTick` and `onPlace` handlers. The `onTick` handler stores `system.currentTick` in a block dynamic property and compares it on the next tick to detect gaps (chunk was unloaded). Pure detection logic is extracted into a testable `computeGap()` function.
 
-**Subsystem layer (`scripts/subsystem/`)** — each subsystem owns one Bedrock event subscription or interval. Constructors take the manager as their sole dependency; `.register()` wires up the Bedrock hook. They query the manager but never mutate other subsystems.
+**Constants (`scripts/util/Constants.js`)** — all magic numbers: tick interval, gap threshold, redstone breakpoints, event IDs.
 
-**Block handler layer (`scripts/handler/`)** — thin glue between `world.afterEvents.playerPlaceBlock` / `playerBreakBlock` and the domain. Each handler matches by `typeId`, then delegates to the manager.
+**Entry point (`scripts/main.js`)** — registers the block custom component. Minimal wiring.
 
-The manager is the single source of truth. No subsystem keeps its own state — they all query through the manager. When you mutate state, call `manager.save()` so persistence stays in sync.
+### How detection works
 
-### Startup order (in `main.js`)
+The block uses `minecraft:tick` with a fixed `[20, 20]` interval (1 second). Each tick, it stores `system.currentTick` in a block dynamic property. On the next tick, if `currentTick - lastStoredTick > GAP_THRESHOLD`, the chunk was unloaded for that many ticks. The block fires an `awaydetector:chunk_returned` script event and (if supported) emits a redstone pulse.
 
-The order in `main.js` is load-bearing: the manager exists before any subsystem so its reference can be shared, and persistence is hydrated both on `worldInitialize` and via a one-shot `system.run(...)` fallback because some Bedrock builds don't fire `worldInitialize` on script reload.
+### Reuse model
 
-### Persistence
-
-State serializes to a single world dynamic property keyed by `PERSISTENCE_KEY` in `Constants.js`. The payload is the JSON form of all managed objects.
-
-### Java parity
-
-The Java edition follows the same architecture: domain classes have no Minecraft imports (testable with plain JUnit), subsystems handle event registration, and the mod entrypoint initializes everything in the correct order. See `docs/parity-checklist.md` for feature parity tracking.
+Cross-addon custom components are not supported in Bedrock. Other mods reuse AwayDetector by copying `DetectorComponent.js` into their own behavior pack and registering it in their startup event. The component name stays `awaydetector:detector`.
 
 ## Conventions
 
-- **All magic numbers go in `scripts/util/Constants.js`.** Radii, intervals, scan thresholds, block IDs. Nothing hardcoded in handlers or domain classes.
-- **Block identifiers are namespaced with your mod ID** (e.g. `mymod:example_block`).
-- **Domain code never imports `@minecraft/server`.** If you need the API in a domain class, that logic belongs in the subsystem or handler layer instead.
-- **Mutations to state must call `manager.save()`** so the world dynamic property stays current.
+- **All magic numbers go in `scripts/util/Constants.js`.** Tick intervals, thresholds, breakpoints, event IDs.
+- **Block identifiers are namespaced `awaydetector:`** (e.g. `awaydetector:awaydetector_block`).
+- **Detection logic is pure and testable.** `computeGap()` has no Bedrock imports.
+- **Gap threshold is exclusive.** Gap fires when `delta > GAP_THRESHOLD`, not `>=`.
 
 ## Tests
 
-Tests live in `tests/*.test.mjs` and use `node:test` + `node:assert/strict`. The loader hook in `tests/hooks.mjs` rewrites `@minecraft/server` to the stub at `tests/stubs/minecraft-server.mjs`. The stub exports inert `world` and `system` objects plus `__setWorld(w)` / `__setSystem(s)` / `__reset()` for tests that need to observe API calls.
+Tests live in `tests/*.test.mjs` and use `node:test` + `node:assert/strict`. The loader hook in `tests/hooks.mjs` rewrites `@minecraft/server` to the stub at `tests/stubs/minecraft-server.mjs`.
 
-When adding a test for code that imports `@minecraft/server`, install fakes via `__setWorld` **before** importing the module under test, or rely on the default noop stub.
-
-Java tests live in `java-mymod/src/test/` and use JUnit 5. Domain tests need no Minecraft server — they test pure Java classes directly.
+Java tests live in `java-awaydetector/src/test/` and use JUnit 5.
